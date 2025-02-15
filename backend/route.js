@@ -1,33 +1,34 @@
 const express = require('express');
-const Draw = require('./models/Draw');
 const router = express.Router();
+const Draw = require('./models/Draw');
 
-// Generate a random number between 2-100
-const generateRandomNumber = () => Math.floor(Math.random() * 99) + 2;
-
-// Get last 14 draws
-router.get('/history', async (req, res) => {
-    const draws = await Draw.find().sort({ _id: -1 }).limit(14);
-    res.json(draws);
+// Route to get all draws (last 14 days)
+router.get('/', async (req, res) => {
+    try {
+        const draws = await Draw.find().sort({ date: -1 }).limit(14);
+        res.json(draws);
+    } catch (error) {
+        res.status(500).json({ message: "Error fetching data" });
+    }
 });
 
-// Generate new lucky draw numbers at 4PM
-router.post('/generate', async (req, res) => {
-    const num1 = generateRandomNumber();
-    const num2 = generateRandomNumber();
-    const today = new Date().toLocaleDateString();
+// Route to add a new draw number
+router.post('/', async (req, res) => {
+    try {
+        const { number } = req.body;
+        const newDraw = new Draw({ number });
+        await newDraw.save();
 
-    await Draw.create({ number: num1, date: today });
-    await Draw.create({ number: num2, date: today });
+        // Delete old records if more than 14 days
+        const allDraws = await Draw.find().sort({ date: -1 });
+        if (allDraws.length > 14) {
+            await Draw.findOneAndDelete({ _id: allDraws[allDraws.length - 1]._id });
+        }
 
-    // Ensure only the last 14 days are stored
-    const count = await Draw.countDocuments();
-    if (count > 28) {
-        const oldestDraws = await Draw.find().sort({ _id: 1 }).limit(count - 28);
-        await Draw.deleteMany({ _id: { $in: oldestDraws.map(d => d._id) } });
+        res.status(201).json(newDraw);
+    } catch (error) {
+        res.status(500).json({ message: "Error saving data" });
     }
-
-    res.json({ success: true, num1, num2 });
 });
 
 module.exports = router;
